@@ -11,7 +11,7 @@ docker compose run --rm -it prepare
 
 Последующие запуски сервера:
 ```bash
-docker compose run --rm -it prepare
+docker compose run --rm -it
 ```
 Запуск клиента:
 ```bash
