@@ -1,0 +1,30 @@
+version: '3'
+
+services:
+  database:
+    image: mongo
+
+  prepare:
+    build: .
+    command: python -m mygame.database_preparation
+    depends_on:
+      - database
+    profiles:
+      - prepare
+
+  server:
+    build: .
+    command: python -m mygame.server
+    init: true
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - database
+
+  client:
+    build: .
+    command: python -m mygame.client
+    depends_on:
+      - server
+    profiles:
+      - client
