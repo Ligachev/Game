@@ -8,7 +8,7 @@ from typing import Union
 from concurrent.futures import ThreadPoolExecutor
 
 from mygame.config_parser import get_client_host, get_sock_port
-from mygame.schemas import ClientStorage, User, Item
+from mygame.schemas import ClientStorage
 from mygame.my_socket import MySocket
 from mygame.table_maker import print_table
 from mygame.text_template import text_maker
@@ -44,7 +44,7 @@ class Interface:
             self,
             executor: dict = None,
             field: str | bool = None
-    ) -> Union[User | bool | str | list[dict]]:
+    ) -> Union[dict | bool | str | list[dict]]:
         with ThreadPoolExecutor(1) as pool_executor:
             while True:
                 if executor and field:
@@ -136,8 +136,8 @@ class Interface:
 
     def account(self, text: str) -> None:
         user = self.make_storage_request(field='user')
-        print(text[0].format(user.name, user.credit))
-        items = user.get_items()
+        print(text[0].format(user.get('name'), user.get('credit')))
+        items: list[dict] = user['items']
 
         if len(items) > 0:
             print_table(data=items)
@@ -161,7 +161,6 @@ class Interface:
                     return
 
             price = [item['price'] for item in items if item['id'] in item_ids]
-
             ask = input(text[3].format(len(item_ids), sum(price)))
 
             if ask.lower() == 'yes':
@@ -210,7 +209,7 @@ class Interface:
         params = {
             'function': 'top_up',
             'data': {
-                'name': self.make_storage_request(field='user').name,
+                'name': self.make_storage_request(field='user').get('name'),
                 'credit': payment,
             },
         }
@@ -220,7 +219,7 @@ class Interface:
         params = {
             'function': 'sell_items',
             'data': {
-                'name': self.make_storage_request(field='user').name,
+                'name': self.make_storage_request(field='user').get('name'),
                 'item_ids': item_ids,
             },
         }
@@ -230,7 +229,7 @@ class Interface:
         params = {
             'function': 'buy_items',
             'data': {
-                'name': self.make_storage_request(field='user').name,
+                'name': self.make_storage_request(field='user').get('name'),
                 'item_ids': item_ids,
             },
         }
@@ -258,7 +257,7 @@ class ClientServer:
         listener_thr.join(timeout=1)
         _rendering()
 
-    def handle_storage(self, method: str | bool, data_dict: dict) -> Union[User | bool | str | list[Item]] | None:
+    def handle_storage(self, method: str | bool, data_dict: dict) -> Union[dict | bool | str | list[dict]] | None:
         locker = threading.RLock()
         with locker:
             match method:
@@ -303,7 +302,7 @@ class ClientServer:
                     break
                 continue
 
-    def storage_mapping(self, store: dict) -> Union[User | bool | str | list[Item]]:
+    def storage_mapping(self, store: dict) -> Union[dict | bool | str | list[dict]]:
         field = store.get('field')
         return self.storage[field]
 

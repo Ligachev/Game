@@ -6,7 +6,6 @@ import selectors
 from mygame.database import MongoDB
 from mygame.config_parser import get_bind_host, get_sock_port
 from mygame.text_template import system_message_creator
-from mygame.schemas import Item
 
 
 BUFFER_SIZE = 4096
@@ -15,19 +14,20 @@ ENCODING = 'utf-8'
 
 def user_login(mongo: MongoDB, data: dict) -> dict:
     user = mongo.find_user(data['name'])
-    if user.id is not None:
-        return {'function': 'login', 'status': 'succeeded', 'data': user.to_dict(), 'is_login': True}
-    else:
+    if user.get('id') is None:
         try:
             new_user = mongo.create_user(data['name'])
         except Exception:
             return {'function': 'login_new_user', 'status': 'failed', 'is_login': False}
         else:
-            return {'function': 'login_new_user', 'status': 'succeeded', 'data': new_user.to_dict(), 'is_login': True}
+            return {'function': 'login_new_user', 'status': 'succeeded', 'data': new_user, 'is_login': True}
+    else:
+        return {'function': 'login', 'status': 'succeeded', 'data': user, 'is_login': True}
 
 
 def get_items(mongo: MongoDB, **kwargs) -> dict:
     items = mongo.find_items()
+    print(items)
     if len(items) > 0:
         return {'function': 'get_items', 'status': 'succeeded', 'data': items}
     else:
@@ -40,49 +40,48 @@ def buy_items(mongo: MongoDB, data: dict):
     for_pay = []
     total_price = 0
     for item in items:
-        if item['id'] in data['item_ids']:
+        if item.get('id') in data['item_ids']:
             for_pay.append(item)
             total_price += item['price']
 
-    credit = user.credits() - total_price
+    credit = user['credit'] - total_price
     if credit < 0:
-        return {'function': 'buy_items', 'status': 'failed', 'data': user.to_dict()}
+        return {'function': 'buy_items', 'status': 'failed', 'data': user}
     else:
-        user.update_items(user.items + [Item(item) for item in for_pay])
-        user.credits_update(credit)
-        mongo.update_user(user.to_dict())
-        return {'function': 'buy_items', 'status': 'succeeded', 'data': user.to_dict()}
+        user['items'].extend(for_pay)
+        user['credit'] = credit
+        mongo.update_user(user)
+        return {'function': 'buy_items', 'status': 'succeeded', 'data': user}
 
 
 def sell_items(mongo: MongoDB, data: dict):
     user = mongo.find_user(data['name'])
-    for_sail = []
+    not_sail = []
     total_price = 0
-    items = user.get_items()
+    items = user['items']
     if len(items) == 0:
-        return {'function': 'sell_items', 'status': 'failed', 'data': user.to_dict()}
+        return {'function': 'sell_items', 'status': 'failed', 'data': user}
     for item in items:
-        if item['id'] not in data['item_ids']:
-            for_sail.append(item)
+        if item.get('id') not in data['item_ids']:
+            not_sail.append(item)
             continue
         total_price += item['price']
 
-    credit = user.credits() + total_price
-    user.update_items([Item(item) for item in for_sail])
-    user.credits_update(credit)
-    mongo.update_user(user.to_dict())
-    return {'function': 'sell_items', 'status': 'succeeded', 'data': user.to_dict()}
+    user['credit'] = user['credit'] + total_price
+
+    user['items'] = not_sail
+    mongo.update_user(user)
+    return {'function': 'sell_items', 'status': 'succeeded', 'data': user}
 
 
 def top_up(mongo: MongoDB, data: dict):
     user = mongo.find_user(data['name'])
     try:
-        credit = user.credits() + data['credit']
-        user.credits_update(credit)
-        mongo.update_user(user.to_dict())
-        return {'function': 'top_up', 'status': 'succeeded', 'data': user.to_dict()}
+        user['credit'] = user['credit'] + data['credit']
+        mongo.update_user(user)
+        return {'function': 'top_up', 'status': 'succeeded', 'data': user}
     except Exception:
-        return {'function': 'top_up', 'status': 'failed', 'data': user.to_dict()}
+        return {'function': 'top_up', 'status': 'failed', 'data': user}
 
 
 _func_mapping = {
@@ -130,7 +129,7 @@ class Server:
                 message = sys_message | result
                 data = json.dumps(message, indent=4).encode(ENCODING)
                 msg = struct.pack('>I', len(data)) + data
-                print('Отправка данных: ', data)
+                # print('Отправка данных: ', data)
                 client_socket.send(msg)
 
         except ConnectionError:

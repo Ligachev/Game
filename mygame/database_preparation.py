@@ -4,8 +4,7 @@ from mygame.database import MongoDB
 
 def filling_db():
     mongo = MongoDB()
-    mongo.set_collection('Items')
-    coll = mongo.collection
+    coll = mongo.db.item
     items = items_generators()
     coll.insert_many(items)
 
