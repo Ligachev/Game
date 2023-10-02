@@ -55,11 +55,29 @@ class ClientStorage:
 
     def __init__(self, is_login: bool, is_active: bool, page: str):
         self.user: User
-        self.is_login = is_login
-        self.is_active = is_active
-        self.page = page
+        self.is_login: bool = is_login
+        self.is_active: bool = is_active
+        self.page: str = page
         self.items: list[Item] = []
-        self.is_purchases = False
+        self.is_purchases: bool = False
+        self.sys_message: str = ''
+
+    def __getitem__(self, item):
+        match item:
+            case 'user':
+                return self.user
+            case 'is_login':
+                return self.is_login
+            case 'is_active':
+                return self.is_active
+            case 'page':
+                return self.page
+            case 'items':
+                return self.items
+            case 'is_purchases':
+                return self.is_purchases
+            case 'sys_message':
+                return self.sys_message
 
     def print_store(self):
         print({
@@ -92,6 +110,9 @@ class ClientStorage:
     def deactivate(self) -> None:
         self.is_active = False
 
+    def activate(self) -> None:
+        self.is_active = True
+
     def user_update(self, *args, data: dict, **kwargs) -> None:
         self.user = User(data)
 
@@ -103,3 +124,9 @@ class ClientStorage:
 
     def main_page(self) -> None:
         self.page = 'Main'
+
+    def sys_message_set(self, text) -> None:
+        self.sys_message = text
+
+    def sys_message_clear(self) -> None:
+        self.sys_message = ''

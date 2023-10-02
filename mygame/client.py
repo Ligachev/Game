@@ -1,10 +1,14 @@
+import sys
 from socket import AF_INET, SOCK_STREAM
 import threading
 import time
 import json
+import os
+from typing import Union
+from concurrent.futures import ThreadPoolExecutor
 
 from mygame.config_parser import get_client_host, get_sock_port
-from mygame.schemas import ClientStorage
+from mygame.schemas import ClientStorage, User, Item
 from mygame.my_socket import MySocket
 from mygame.table_maker import print_table
 from mygame.text_template import text_maker
@@ -13,40 +17,94 @@ BUFFER_SIZE = 4096
 _thread_stop = False
 
 
+def _thread_stopping() -> None:
+    global _thread_stop
+    _thread_stop = True
+
+
+def _rendering(func=None, text=None) -> None:
+    if sys.platform == 'win32':
+        os.system('cls')
+    if sys.platform == 'linux':
+        os.system('clear')
+
+    if func:
+        func(text)
+
+
 class Interface:
 
-    def __init__(self, socket, storage, sendr, thread_stopping):
+    def __init__(self, storage, sender, handle_storage):
         self.storage: ClientStorage = storage
-        self.socket: MySocket = socket
-        self.sender = sendr
-        self.thread_stopping = thread_stopping
+        self.sender = sender
+        self.handle_storage = handle_storage
+        self.local = threading.local()
+
+    def make_storage_request(
+            self,
+            executor: dict = None,
+            field: str | bool = None
+    ) -> Union[User | bool | str | list[dict]]:
+        with ThreadPoolExecutor(1) as pool_executor:
+            while True:
+                if executor and field:
+                    method = 'get execute'
+                    pool = pool_executor.submit(self.handle_storage, method, {'func': executor['func']})
+                    feature = pool.result()
+                    return feature
+                elif executor:
+                    method = 'execute'
+                    thread_exec = threading.Thread(
+                        target=self.handle_storage,
+                        args=(method, {'func': executor['func']}),
+                        daemon=True
+                    )
+                    thread_exec.start()
+                    break
+                elif field:
+                    method = 'get'
+                    pool = pool_executor.submit(self.handle_storage, method, {'field': field})
+                    feature = pool.result()
+                    return feature
 
     def run(self) -> None:
-        while self.storage.is_active:
-            try:
-                self.registration(text_maker('Registration'))
-                while self.storage.is_login:
-                    main = 'Main'
-                    store = 'Store'
-                    account = 'Account'
-                    if self.storage.page == account:
-                        self.account(text_maker(account))
-                    elif self.storage.page == store:
-                        self.store(text_maker(store))
-                    elif self.storage.page == main:
-                        self.main_menu(text_maker(main))
-            except (EOFError, KeyboardInterrupt):
-                self.routing('exit')
+        while not _thread_stop:
+            self.make_storage_request(executor={'func': self.storage.activate})
+            while self.make_storage_request(field='is_active'):
+                try:
+                    _rendering(self.registration, text_maker('Registration'))
+                    self.sys_mg()
+                    while self.make_storage_request(field='is_login'):
+                        page = self.make_storage_request(field='page')
+                        match page:
+                            case 'Main':
+                                _rendering(self.main_menu, text_maker(page))
+                            case 'Account':
+                                _rendering(self.account, text_maker(page))
+                            case 'Store':
+                                _rendering(self.store, text_maker(page))
+                except (EOFError, KeyboardInterrupt):
+                    self.routing('exit')
+
+    def sys_mg(self):
+        sys_mg = self.make_storage_request(field='sys_message')
+        if sys_mg:
+            _rendering(self.print_sys_mg, sys_mg)
+            self.make_storage_request(executor={'func': self.storage.sys_message_clear})
+
+    @staticmethod
+    def print_sys_mg(sys_mg):
+        print(sys_mg)
+        time.sleep(1)
 
     def routing(self, root: str) -> str | None:
         switch_commands = {
-            'exit': [self.thread_stopping, self.storage.deactivate, self.storage.logout, self.storage.main_page],
+            'exit': [_thread_stopping, self.storage.deactivate, self.storage.logout, self.storage.main_page],
             'logout': [self.storage.logout, self.storage.main_page],
             'account': [self.storage.account_page],
             'store': [self.storage.store_page],
             'main': [self.storage.main_page],
             'state': [self.storage.print_store],
-            'top up': [self.top_up],
         }
         commands = switch_commands.get(root.lower())
 
@@ -54,11 +112,7 @@ class Interface:
             return root
 
         for command in commands:
-            if commands == 'top up' and self.storage.page != 'account':
-                print(text_maker('Top up fake'))
-                return command
-
-            command()
+            self.make_storage_request(executor={'func': command})
 
         return
 
@@ -67,34 +121,38 @@ class Interface:
         if name == 'exit':
             self.routing(name)
             return
-        self.sender({
+        params = {
             "function": "login",
             "data": {
                 "name": name,
             }
         }
-        )
-        time.sleep(1)
+        self.sender(params)
 
     def main_menu(self, text: str) -> None:
-        while True:
-            root = self.routing(input(text))
-            if root is None:
-                return
+        root = self.routing(input(text))
+        if root is None:
+            return
 
     def account(self, text: str) -> None:
-        print(text[0].format(self.storage.user.name, self.storage.user.credit))
-        items = self.storage.user.get_items()
+        user = self.make_storage_request(field='user')
+        print(text[0].format(user.name, user.credit))
+        items = user.get_items()
+
         if len(items) > 0:
             print_table(data=items)
         else:
             print(text[1])
-
-        while self.storage.page == 'Account':
-            inp = self.routing(input(text[2]))
-            if not inp:
-                break
+        inp = self.routing(input(text[2]))
+        if not inp:
+            return
+        if inp.lower() == 'top up':
+            self.top_up()
+            self.sys_mg()
+            return
+        else:
             item_ids = []
+
             for char in inp.split(','):
                 try:
                     item_ids.append(int(char))
@@ -108,32 +166,38 @@ class Interface:
 
             if ask.lower() == 'yes':
                 self.sell_items(item_ids)
+            self.sys_mg()
 
     def store(self, text: str) -> None:
         print(text[0])
-        items = self.storage.get_items()
+        items: list[dict] = self.make_storage_request(
+            field=True,
+            executor={'func': self.storage.get_items}
+        )
         if not items:
             self.get_items(text[1])
-            items = self.storage.get_items()
+            self.sys_mg()
+            return
         print_table(data=items)
-        while self.storage.page == 'Store':
-            inp = self.routing(input(text[2]))
-            if not inp:
-                break
-            inp = inp.split(',')
-            item_ids = []
-            for char in inp:
-                try:
-                    item_ids.append(int(char))
-                except ValueError:
-                    print(text_maker('ValueError'))
-                    return
 
-            price = [item['price'] for item in items if item['id'] in item_ids]
-            ask = input(text[3].format(len(item_ids), sum(price)))
+        inp = self.routing(input(text[2]))
+        if not inp:
+            return
+        inp = inp.split(',')
+        item_ids = []
+        for char in inp:
+            try:
+                item_ids.append(int(char))
+            except ValueError:
+                print(text_maker('ValueError'))
+                return
 
-            if ask.lower() == 'yes':
-                self.buy_items(item_ids)
+        price = [item['price'] for item in items if item['id'] in item_ids]
+        ask = input(text[3].format(len(item_ids), sum(price)))
+
+        if ask.lower() == 'yes':
+            self.buy_items(item_ids)
+        self.sys_mg()
 
     def top_up(self):
         while True:
@@ -143,97 +207,110 @@ class Interface:
                 print(text_maker('ValueError'))
             else:
                 break
-
-        self.sender({
+        params = {
             'function': 'top_up',
             'data': {
-                'name': self.storage.user.name,
+                'name': self.make_storage_request(field='user').name,
                 'credit': payment,
             },
         }
-        )
-        time.sleep(1)
+        self.sender(params)
 
     def sell_items(self, item_ids: list[int]):
-        self.sender({
+        params = {
             'function': 'sell_items',
             'data': {
-                'name': self.storage.user.name,
+                'name': self.make_storage_request(field='user').name,
                 'item_ids': item_ids,
             },
         }
-        )
-        time.sleep(1)
+        self.sender(params)
 
     def buy_items(self, item_ids: list[int]):
-        self.sender({
+        params = {
             'function': 'buy_items',
             'data': {
-                'name': self.storage.user.name,
+                'name': self.make_storage_request(field='user').name,
                 'item_ids': item_ids,
             },
         }
-        )
-        time.sleep(1)
+        self.sender(params)
 
     def get_items(self, text):
         print(text)
-        self.sender({
+        params = {
             "function": "get_items",
         }
-        )
-        time.sleep(1)
+        self.sender(params)
 
 
 class ClientServer:
     def __init__(self, socket):
         self.socket: MySocket = socket
-        self.storage = ClientStorage(is_login=False, is_active=True, page='Main')
+        self.storage: ClientStorage = ClientStorage(is_login=False, is_active=False, page='Main')
+        self.is_response: bool = False
 
     def run_client(self):
-        interface = Interface(self.socket, self.storage, self.sender, self.thread_stopping)
-        listener = self.listener()
-        print('listener')
+        listener_thr = threading.Thread(target=self.listener, daemon=True)
+        interface = Interface(self.storage, self.sender, self.handle_storage)
+        listener_thr.start()
         interface.run()
-        listener.join(timeout=1)
+        listener_thr.join(timeout=1)
+        _rendering()
 
-    def sender(self, request: dict) -> None:
+    def handle_storage(self, method: str | bool, data_dict: dict) -> Union[User | bool | str | list[Item]] | None:
+        locker = threading.RLock()
+        with locker:
+            match method:
+                case 'get execute':
+                    func = data_dict.get('func')
+                    return func() if func else []
+                case 'get':
+                    return self.storage_mapping(data_dict)
+                case 'execute':
+                    data_dict.get('func')()
+                case 'update':
+                    print('\n\n\n>>>System message<<<:', data_dict['System message'], '\n\n\n')
+                    self.task_mapping(data_dict)
+                case _:
+                    return
+
+    def sender(self, params: dict):
+        with ThreadPoolExecutor(1) as pool_executor:
+            pool = pool_executor.submit(self.send, params)
+            pool.result()
+
+    def send(self, request: dict) -> None:
         try:
             self.socket.send(json.dumps(request).encode(encoding='utf-8'))
+            self.is_response = False
+            while not self.is_response:
+                pass
 
         except ConnectionError:
             print(f"Client suddenly closed while receiving")
 
-    def thread_stopping(self):
+    def listener(self) -> None:
         global _thread_stop
-        _thread_stop = True
+        while not _thread_stop:
+            try:
+                bin_arr = self.socket.recv_msg()
+                data_json = json.loads(bin_arr)
+                self.handle_storage('update', data_json)
+                self.is_response = True
+            except (ConnectionError, ConnectionAbortedError):
+                if _thread_stop:
+                    break
+                continue
 
-    def listener(self):
-        socket = self.socket
-        task_mapping = self.task_mapping
-
-        class Listener(threading.Thread):
-            def run(self) -> None:
-                global _thread_stop
-                while not _thread_stop:
-                    try:
-                        bin_arr = socket.recv_msg()
-                        data_json = json.loads(bin_arr)
-                        print('\n\n\n>>>System message<<<:', data_json['System message'], '\n\n\n')
-                        task_mapping(data_json)
-                    except (ConnectionError, ConnectionAbortedError):
-                        if _thread_stop:
-                            break
-                        continue
-
-        listener = Listener(daemon=True)
-        listener.start()
-
-        return listener
+    def storage_mapping(self, store: dict) -> Union[User | bool | str | list[Item]]:
+        field = store.get('field')
+        return self.storage[field]
 
     def task_mapping(self, data_json):
         func = data_json.get('function')
         data = data_json.get('data')
+        sys_message = data_json.get('System message')
         # status = json.get('status')
         is_login = data_json.get('is_login')
         func_mapping = {
@@ -245,6 +322,9 @@ class ClientServer:
             'top_up': self.storage.user_update,
         }
         func_mapping[func](data=data, is_login=is_login)
+        if sys_message:
+            message = text_maker('System message')
+            self.storage.sys_message_set(message.format(sys_message))
 
 
 if __name__ == "__main__":

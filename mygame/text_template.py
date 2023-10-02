@@ -1,14 +1,15 @@
 def text_maker(root: str) -> str:
     switch_text = {
-        'Registration': '\n\t\n\t\t\t\t<<<Добро пожаловать в СУПЕР ИГРУ!!!!>>>'
-                        '\n\n\nДля продолжения укажите имя или введите Exit для завершения программы: \n>>>_',
-        'Main': '\n\t\n\t\t\t\t<<<Добро пожаловать в главное меню>>>'
-                '\n\n\nДля перемещения по приложению используйте команды: Logout, Account, Store, Exit, State: \n>>>_',
+        'System message': '\n\n\n\n\t\t\t>>>System message<<<:\t {}',
+        'Registration': '\n\n\n\n\n\n\n\t\t\t\t\t<<<Добро пожаловать в СУПЕР ИГРУ!!!!>>>'
+                        '\n\n\n\n\n\n\n\nДля продолжения, введите ЛОГИН ПОЛЬЗОВАТЕЛЯ или введите Exit для завершения программы: \n>>>_',
+        'Main': '\n\n\n\n\n\n\n\t\t\t\t\t<<<Добро пожаловать в главное меню>>>'
+                '\n\n\n\n\n\n\n\nДля перемещения по приложению используйте команды: Logout, Account, Store, Exit, State: \n>>>_',
         'Account': [
-            '\n\t\n\t\t\t\t<<<Добро пожаловать в игровой аккаунт {}>>>\n\t\n\t\t\t\t'
-            '\n\t\n\t\t\t\t<<<Ваш игровой баланс {} кредитов>>>\n\t\n\t\t\t\t',
-            '\n\t\n\t\t<<<Вы не имеете игровых покупок, покупки можно совершить в магазине игры>>>\n\t\n\t\t',
-            '\n\n\nДля продажи, укажите ID одного или нескольких товаров.'
+            '\n\n\n\n\n\n\n\t\t\t\t\t<<<Добро пожаловать в игровой аккаунт {}>>>'
+            '\n\n\t\t\t\t\t<<<Ваш игровой баланс {} кредитов>>>\n\n\n\n\n',
+            '\n\t\n\t\t<<<Вы не имеете игровых покупок, покупки можно совершить в магазине игры>>>',
+            '\n\n\n\n\n\n\n\nДля продажи, укажите ID одного или нескольких товаров.'
             '\nЧто бы пополнить баланс введите команду "top up".'
             '\nДля перемещения по приложению используйте команды: Logout, Account, Main, Store, Exit, State:\n>>>_',
             '\nВы желаете продать {} items, на общую сумму {} кредитов.'
@@ -18,9 +19,9 @@ def text_maker(root: str) -> str:
         'Top up': '\nУкажите сумму пополнения:\n>>>_',
         'ValueError': '<<<!!!!!!!Введите цифру!!!!!!!>>>',
         'Store': [
-            '\n\t\n\t\t\t\t<<<Добро пожаловать в магазин>>>\n\t\n\t\t\t\t',
-            '\n\t\n\t\t\t\t<<<Ожидайте выполняется загрузка магазина>>>\n\t\n\t\t\t\t',
-            '\n\n\nДля покупки, укажите ID одного или нескольких товаров.'
+            '\n\n\n\n\n\n\n\t\t\t\t\t<<<Добро пожаловать в магазин>>>\n\n\n\n\n\n\n\t\t\t\t\t',
+            '<<<Ожидайте выполняется загрузка магазина>>>',
+            '\n\n\n\n\n\n\n\nДля покупки, укажите ID одного или нескольких товаров.'
             '\nДля перемещения по приложению используйте команды: Logout, Account, Main, Exit, State:\n>>>_',
             '\nВы желаете купить {} items, на общую сумму {} кредитов.'
             '\nYes/No:\n>>>_'
@@ -47,8 +48,8 @@ def system_message_creator(download: dict) -> dict:
             'top_up': 'Purchase completed successfully',
         },
         'failed': {
-            'get_items': 'An error occurred while loading the store.',
             'login_new_user': f'Hello {name}, We have som technical problems.',
+            'get_items': 'An error occurred while loading the store.',
             'buy_items': 'There are insufficient credits in your account.',
             'sell_items': 'Transaction processing error',
             'top_up': 'Transaction processing error',

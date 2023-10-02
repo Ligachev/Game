@@ -113,7 +113,6 @@ class TaskManager:
                 self.mongo,
                 data=data,
             ))
-
         return task_result
 
 
@@ -122,7 +121,6 @@ class Server:
     def __init__(self, serv_socket):
         self.socket: socket = serv_socket
         self.task_manager: TaskManager = TaskManager()
-        self.pool: ThreadPoolExecutor = ThreadPoolExecutor()
 
     @staticmethod
     def sender(client_socket, feature) -> bool:
@@ -156,12 +154,12 @@ class Server:
             if not data_json:
                 print("Отключено пользователем", address)
                 return False
+            with ThreadPoolExecutor(1) as pool_executor:
+                self.task_manager.add_task(data_json)
+                feature = pool_executor.submit(self.task_manager.run_task)
+                feature_result = feature.result()
 
-            self.task_manager.add_task(data_json)
-            feature = self.pool.submit(self.task_manager.run_task)
-            feature_result = feature.result()
-
-            self.sender(client_socket, feature_result)
+                self.sender(client_socket, feature_result)
 
             return True
 
